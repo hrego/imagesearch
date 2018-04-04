@@ -9,12 +9,8 @@ var fs = require('fs');
 var express = require('express');
 var mongo = require('mongodb').MongoClient;
 var app = express();
-var http = require('http');
 const https = require('https');
-var bl = require('bl');
 var url = require('url');
-var url_mongo = process.env.MONGOLAB_URI;
-
 
 if (!process.env.DISABLE_XORIGIN) {
   app.use(function(req, res, next) {
@@ -50,10 +46,10 @@ app.route('/api/imagesearch/')
 		  res.sendFile(process.cwd() + '/views/index.html');
     })
   
-// get search results from Google Custom Search api JSON response
+// Get search results from Google Custom Search api JSON response
 function getResults(url, callback) {
  
-      // GSE JSON response handler
+      // GCSE JSON response handler
       https.get(url, function(response){
         var body = '';
         var i;
@@ -70,8 +66,8 @@ function getResults(url, callback) {
             for (i in gResponse.items) {
               var item = gResponse.items[i];
               gReturned += '{';
-              if(item.hasOwnProperty('link')){
-                gReturned += '"url":"'+ item.link + '"';  // link
+              if((item.hasOwnProperty('pagemap')) && (item.pagemap.hasOwnProperty('cse_image'))){
+                gReturned += '"url":"'+ item.pagemap.cse_image[0].src + '"';  // url
               }
               if(item.hasOwnProperty('title')){
                 gReturned += ',"snippet":"'+ item.title + '"'; // snippet
@@ -79,8 +75,8 @@ function getResults(url, callback) {
               if((item.hasOwnProperty('pagemap')) && (item.pagemap.hasOwnProperty('cse_thumbnail'))){
                 gReturned += ',"thumbnail":"'+ item.pagemap.cse_thumbnail[0].src + '"'; // thumbnail
               }
-              if((item.hasOwnProperty('pagemap')) && (item.pagemap.hasOwnProperty('cse_image'))){
-                gReturned += ',"context":"'+ item.pagemap.cse_image[0].src + '"'; // context
+              if(item.hasOwnProperty('link')){
+                gReturned += ',"context":"'+ item.link + '"';  // link
               }
               gReturned += '},';
             }
@@ -93,14 +89,12 @@ function getResults(url, callback) {
         });
       }).on('error', function(e){
           callback("Got an error: " + e, '');
-      });
-  
+      });  
 }
-
 
 // Insert document in db collection
 function insertDocDb(document, col, callback){
-  mongo.connect(url_mongo, function(err, client) {
+  mongo.connect(process.env.MONGOLAB_URI, function(err, client) {
       if (err) throw err;
       var db = client.db(process.env.DBNAME);
       var collection = db.collection(col);
@@ -116,7 +110,7 @@ function insertDocDb(document, col, callback){
 
 // Find document in db collection
 function findDocDb(query, filter, collection, callback) {
-  mongo.connect(url_mongo, function(err, client) {
+  mongo.connect(process.env.MONGOLAB_URI, function(err, client) {
     if (err) console.log(err);
     var db = client.db(process.env.DBNAME);
     var coll = db.collection(collection);
@@ -146,7 +140,7 @@ function getSearchParameters(urlStr, callback) {
     var pageArr = searchArr[1].split('=');  // offset parameter
     offset = pageArr[1]; //offset value
   }
-  var url = "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+searchStr+"&num=10"
+  var url = "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+searchStr
   if (offset |= ''){
     url += "&start="+offset;
   }
@@ -164,7 +158,7 @@ app.route('/api/imagesearch/*')
   // Url String - search terms
   var urlStr = req.url;
   
-  // get search parameters
+  // Get search parameters
   getSearchParameters(urlStr, function (err, url, whenSearch, searchStr) {
     if (err) res.send(err);
     
@@ -177,7 +171,7 @@ app.route('/api/imagesearch/*')
         res.send("Error: Document not inserted.");
       }
     }); 
-    // get search results
+    // Get search results
     getResults(url, function (err, data) {
       if (err) throw err;
       if (data != '') {
@@ -185,8 +179,7 @@ app.route('/api/imagesearch/*')
       }
     });    
   });
-  
-    })
+})
 
 // Find latest search terms and when in db and produce list
 app.route('/api/latest/imagesearch/*')
@@ -202,8 +195,7 @@ app.route('/api/latest/imagesearch/*')
     } else {
       res.end({error:'Not found any search string in the database.'});
     }
-  })
-  
+  })  
 })
 
 // Respond not found to all the wrong routes
