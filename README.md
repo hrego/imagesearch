@@ -119,7 +119,4 @@ Example latest output:
 }]
 
 --------------------------
-
-
---------------------------
 Made by [hr](https://github.com/hrego/)
