@@ -1,27 +1,47 @@
 /****** Main Styling ******/
 
+.center {
+    margin: auto;
+    width: 75%;
+    border: 3px solid #ECF0F1;
+    padding: 10px;
+}
+
+url {
+  font-family: 'Roboto', sans-serif;
+  font-size: 14px;
+  color: #8B0000;
+}
+
 body {
-	font-family: 'Roboto', sans-serif;
-	font-size: 16px;
+  font-family: helvetica, arial, sans-serif;
+	font-size: 15px;
 	color: #222;
 	background-color: #ECF0F1;
-	text-align: center;
+	text-align: justify;
+}
+
+h1 {
+  font-weight: bold;
+  color: grey;
+  text-align: center;
+  border-bottom: 1px solid lightgrey;
+  padding-bottom: 25px;
+}
+
+.bold {
+  font-weight: bold;
 }
 
 .container {
 	padding: 0;
-	margin-top: 40px;
 }
 
-.footer {
-	margin-top: 60px;
-}
-
-ol {
-	list-style-position: inside;
-}
-ul {
-	list-style-type: none;
+footer {
+  margin-top: 50px;
+  padding-top: 25px;
+  border-top: 1px solid lightgrey;
+  text-align: center;
 }
 
 a {
