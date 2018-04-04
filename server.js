@@ -45,6 +45,11 @@ app.route('/')
 		  res.sendFile(process.cwd() + '/views/index.html');
     })
 
+app.route('/api/imagesearch/')
+    .get(function(req, res) {
+		  res.sendFile(process.cwd() + '/views/index.html');
+    })
+  
 // get search results from Google Custom Search api JSON response
 function getResults(url, callback) {
  
@@ -184,7 +189,7 @@ app.route('/api/imagesearch/*')
     })
 
 // Find latest search terms and when in db and produce list
-app.route('/api/latest/imagesearch/')
+app.route('/api/latest/imagesearch/*')
     .get(function(req, res) {
   
   var query = { };
