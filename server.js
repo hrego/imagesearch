@@ -45,78 +45,53 @@ app.route('/')
 		  res.sendFile(process.cwd() + '/views/index.html');
     })
 
-function getResults(query, callback) {
-  const url =
-  //"https://maps.googleapis.com/maps/api/geocode/json?address=Florence";
-  //"https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+query+"&callback=hndlr"
-  "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+query
-  console.log("url:"+url)
+// get search results from Google Custom Search api JSON response
+function getResults(url, callback) {
+ 
+      // GSE JSON response handler
+      https.get(url, function(response){
+        var body = '';
+        var i;
 
-/*http.get(url, res => {
-  res.setEncoding("utf8");
-  let body = "";
-  res.on("data", data => {
-    body += data;
-  });
-  res.on("end", () => {
-    body = JSON.parse(body);
-    console.log(
-      `City: ${body.results[0].formatted_address} -`,
-      `Latitude: ${body.results[0].geometry.location.lat} -`,
-      `Longitude: ${body.results[0].geometry.location.lng}`
-    );
-  });
-});*/
-  
-  
-   /*https.get(url, function (response) {
-     //let body = []; 
-     var body = new Buffer(16);
-     response.setEncoding('utf8')
-      //response.on('data', console.log)
-      response.on('data', (chunk) => {
-        //body.push(chunk);
-        body.write(chunk,0);
-        }).on('end', () => {
-          body = Buffer.concat(body).toString();
-          callback('',body);
-          response.end(body);
+        response.on('data', function(chunk){
+            body += chunk;
         });
-        response.on('error', console.error)
-       callback('error','');
-    }).on('error', console.error)*/
-   
-  
-  
-  
-    https.get(url, res => {
-      res.setEncoding("utf8");
-      let body = "";
-      res.on("data", data => {
-        body += data;
+        
+        // Prepare response for browser output
+        response.on('end', function(){
+          var gResponse = JSON.parse(body);
+          if(gResponse.hasOwnProperty('items')){ 
+            var gReturned = '[';
+            for (i in gResponse.items) {
+              var item = gResponse.items[i];
+              gReturned += '{';
+              if(item.hasOwnProperty('link')){
+                gReturned += '"url":"'+ item.link + '"';  // link
+              }
+              if(item.hasOwnProperty('title')){
+                gReturned += ',"snippet":"'+ item.title + '"'; // snippet
+              }
+              if((item.hasOwnProperty('pagemap')) && (item.pagemap.hasOwnProperty('cse_thumbnail'))){
+                gReturned += ',"thumbnail":"'+ item.pagemap.cse_thumbnail[0].src + '"'; // thumbnail
+              }
+              if((item.hasOwnProperty('pagemap')) && (item.pagemap.hasOwnProperty('cse_image'))){
+                gReturned += ',"context":"'+ item.pagemap.cse_image[0].src + '"'; // context
+              }
+              gReturned += '},';
+            }
+            gReturned = gReturned.slice(0,-1);
+            gReturned += ']';
+            callback('', gReturned);
+          } else {
+            callback([{"error":"No results found."}], '');
+          }
+        });
+      }).on('error', function(e){
+          callback("Got an error: " + e, '');
       });
-      res.on("end", () => {
-        body = JSON.parse(body);
-        callback('', body);
-        /*console.log(
-          `City: ${body.results[0].formatted_address} -`,
-          `Latitude: ${body.results[0].geometry.location.lat} -`,
-          `Longitude: ${body.results[0].geometry.location.lng}`
-        );*/
-      });
-    });  
-  
   
 }
 
-/*
-function hndlr(response) {
-      for (var i = 0; i < response.items.length; i++) {
-        var item = response.items[i];
-        // in production code, item.htmlTitle should have the HTML entities escaped.
-        document.getElementById("content").innerHTML += "<br>" + item.htmlTitle;
-      }
-    }*/
 
 // Insert document in db collection
 function insertDocDb(document, col, callback){
@@ -142,7 +117,6 @@ function findDocDb(query, filter, collection, callback) {
     var coll = db.collection(collection);
     
     coll.find(query, filter)
-    //coll.find(query)
     .toArray(function(err, documents) {
         if (err) callback(err, '');
         callback('', documents);
@@ -151,166 +125,79 @@ function findDocDb(query, filter, collection, callback) {
   })
 }
 
+// Get Search parameters - search string, offset, when and url to perform search in GSE
+function getSearchParameters(urlStr, callback) {
+  
+  // Url parameters - search terms
+  var parameterUrl = urlStr.substring(17);
+  var d = new Date();
+  var whenSearch = d.toISOString(); //date and time (when) of the search
+  
+  var searchStr = parameterUrl;
+  var offset = '';
+  if (parameterUrl.indexOf('?offset=') >= 0){
+    var searchArr = parameterUrl.split('?');  // search parameter
+    searchStr = searchArr[0];  // search term string
+    var pageArr = searchArr[1].split('=');  // offset parameter
+    offset = pageArr[1]; //offset value
+  }
+  var url = "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+searchStr+"&num=10"
+  if (offset |= ''){
+    url += "&start="+offset;
+  }
+  if (searchStr != ''){
+    callback('', url, whenSearch, searchStr);
+  } else {
+    callback('Search string empty', '', '', '');
+  }
+}
+
+// Image search terms parsing and db storing
 app.route('/api/imagesearch/*')
     .get(function(req, res) {
   
-  // Url parameters - search terms
+  // Url String - search terms
   var urlStr = req.url;
-  var parameterUrl = urlStr.substring(17);
-  var d = new Date();
-  var n = d.toISOString();
   
-  // Insert document with original and short url in db
-  var collection = 'latestQueries';
-  var document = { term: parameterUrl, when: n }
-  insertDocDb(document, collection, function (err, data) {
-    if (err) throw err;
-    if (data.result.ok == 1) {
-      //var urlOjb = {term: data.ops[0].term, when: data.ops[0].when};
-      //res.send(JSON.stringify(urlOjb));
-      console.log("inserted");
-    }
-  }); 
+  // get search parameters
+  getSearchParameters(urlStr, function (err, url, whenSearch, searchStr) {
+    if (err) res.send(err);
+    
+    // Insert document with latest search string and when
+    var collection = 'latestQueries';
+    var document = { term: searchStr, when: whenSearch }
+    insertDocDb(document, collection, function (err, data) {
+      if (err) throw err;
+      if (data.result.ok != 1) {
+        res.send("Error: Document not inserted.");
+      }
+    }); 
+    // get search results
+    getResults(url, function (err, data) {
+      if (err) throw err;
+      if (data != '') {
+        res.send(data);
+      }
+    });    
+  });
   
-  // Find short url parameter in db and redirect to original url, if not print error message
-  /*var query = { term: parameterUrl };
-  findDocDb(query, collection, function (err, data) {
-    if (err) throw err;
-    if (data != '') {
-      //console.log(data)
-      console.log(JSON.stringify(data));
-      console.log(data[0].term);
-      console.log(data[0].when);
-      //res.redirect(data[0].originalUrl);
-    } else {
-      console.log(JSON.stringify({error:'This url is not found in the database.'}));
-      //res.send(JSON.stringify({error:'This url is not found in the database.'}));
-    }
-  })*/
-  
-  //var queryStr = urlStr.split('?');
-  
-  //var queryData = url.parse(req.url, true).query;
-  //res.end('Hello ' + queryData.name + '\n');
-  
-  //res.end('Hello ' + parameterUrl + '\n');
-  
-  //const myURL = new URL(req.url);
-  //console.log(myURL.searchParams.get('abc'));
-  
-  /*getResuts(parameterUrl, function (err, data) {
-  //if (err) throw err;
-    if (data != '') {
-      res.send(JSON.stringify(data));
-    }
-  })*/
-  
-  //const url = "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+parameterUrl
-  const url = "https://www.googleapis.com/customsearch/v1?key="+process.env.API_KEY+"&cx="+process.env.GCSE_ID+"&q="+parameterUrl+"&num=10"
-  console.log("url:"+url)
-  
-  
-  
-  
-    /*https.get(url, response => {
-      response.setEncoding("utf8");
-      let body = "";
-      response.on("data", data => {
-        body += data;
-      });
-      response.on("end", () => {
-        body = JSON.parse(body);
-        res.send('olwere');
-        res.send(JSON.stringify(body));
-        //res.send(JSON.stringify(body));
-        //callback('', body);
-        /*console.log(
-          `City: ${body.results[0].formatted_address} -`,
-          `Latitude: ${body.results[0].geometry.location.lat} -`,
-          `Longitude: ${body.results[0].geometry.location.lng}`
-        );*/
-      /*});
-    });*/
-  
-  
-    /*https.get(url, function (response) {
-        response.pipe(bl(function (err, data) {
-          if (err) {
-            return console.error(err)
-          }
-          data = data.toString()
-          //res.send(JSON.stringify(response));
-          //console.log(data)
-          console.log(JSON.stringify(data));
-        }))
-      })*/
-  
-      //res.send(JSON.stringify({ipaddress: ipAddress, language: language, software: software}));
-      
-      // Search execution and json results
-      
-      
-      https.get(url, function(res){
-        var body = '';
-        var count;
-
-        res.on('data', function(chunk){
-            body += chunk;
-        });
-
-        res.on('end', function(){
-            var GResponse = JSON.parse(body);
-          var GReturned = '[';
-          for (count=0; count < 10; count++) {
-          //for (i in GResponse.items) {
-            GReturned += '{';
-            if(GResponse.items[count].hasOwnProperty('link')){
-              GReturned += '"url":"'+ GResponse.items[count].link + '"'; 
-            }
-            if(GResponse.items[count].hasOwnProperty('snippet')){
-              GReturned += ',"snippet":"'+ GResponse.items[count].snippet + '"'; 
-            }
-            if(GResponse.items[count].pagemap.hasOwnProperty('cse_thumbnail')){
-              GReturned += ',"thumbnail":"'+ GResponse.items[count].pagemap.cse_thumbnail[0].src + '"'; // thumbnail
-            }
-            if(GResponse.items[count].pagemap.hasOwnProperty('cse_image')){
-              GReturned += ',"context":"'+ GResponse.items[count].pagemap.cse_image[0].src + '"'; // Context
-            }
-            GReturned += '},';
-          }
-          GReturned = GReturned.slice(0,-1);
-          GReturned += ']';
-          console.log(GReturned);
-          //console.log(JSON.stringify(GReturned));
-        });
-      }).on('error', function(e){
-          console.log("Got an error: ", e);
-      });
-        
-      // 
-    res.send(JSON.stringify("oliiiiiiiii"));
-		  //res.sendFile(process.cwd() + '/views/index.html');
     })
 
+// Find latest search terms and when in db and produce list
 app.route('/api/latest/imagesearch/')
     .get(function(req, res) {
   
-  // Find short url parameter in db and redirect to original url, if not print error message
   var query = { };
   var filter = {projection: { term: 1, when: 1, _id: 0 } };
   var collection = 'latestQueries';
   findDocDb(query, filter, collection, function (err, data) {
     if (err) throw err;
     if (data != '') {
-      //console.log(data)
-      console.log(JSON.stringify(data));
-      //res.redirect(data[0].originalUrl);
+      res.end(JSON.stringify(data));
     } else {
-      console.log(JSON.stringify({error:'This url is not found in the database.'}));
-      //res.send(JSON.stringify({error:'This url is not found in the database.'}));
+      res.end({error:'Not found any search string in the database.'});
     }
   })
-  res.send(JSON.stringify("latest"));
   
 })
 
